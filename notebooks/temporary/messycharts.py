@@ -242,7 +242,7 @@ class messychart:
     return None
 
   # 2.03 - build cateogry bar chart 
-  def create_category_bar(self , bars_different_colors = True, yaxis_data_type = 'numeric', axis_title = '', digits = 0): 
+  def create_category_bar(self , bars_different_colors = True, yaxis_data_type = 'numeric', axis_title = '', digits = 0, stacked = False, x_col = '', y_col = '', color_col = ''): 
 
     # -- error handling 
     bars_different_colors = self.error_handling('bars_different_colors', bars_different_colors)
@@ -251,7 +251,11 @@ class messychart:
 
     # -- create bars 
     if bars_different_colors == True:
-        self.fig = px.bar(self.df, color=self.df.index, color_discrete_sequence= self.colors)
+        if stacked:
+          self.fig = px.bar(self.df, x = x_col, y = y_col, color = color_col, color_discrete_sequence= self.colors)
+        else:
+          self.fig = px.bar(self.df, color=self.df.index, color_discrete_sequence= self.colors)
+
     elif bars_different_colors == False:
         self.fig = px.bar(self.df, color_discrete_sequence= self.colors)
 
@@ -570,8 +574,8 @@ class messychart:
     return None 
 
   # 2.10 - create slide - logic coordinator function 
-  def create_slide(self, chart_type = 'line', axis_title = '', yaxis_data_type = 'numeric', yxais_dollars = False, secondary_column = '', secondary_axis_title = '', 
-                         digits = 0, legend_layout = 'bottom', legend_title = '', calc_method = 'last', calc_days = 30, secondary_data_type = 'numeric', secondary_digits = 0, show_secondary = True): 
+  def create_slide(self, chart_type = 'line', axis_title = '', yaxis_data_type = 'numeric', yxais_dollars = False, secondary_column = '', secondary_axis_title = '', stacked = False, x_col = '', y_col = '', color_col = '',
+                         digits = 0, legend_layout = 'bottom', legend_title = '', calc_method = 'last', calc_days = 30, secondary_data_type = 'numeric', secondary_digits = 0, show_secondary = True, bars_different_colors = True): 
     # -- error handling 
     chart_type = self.error_handling('chart_type', chart_type)
 
@@ -586,7 +590,7 @@ class messychart:
     category_types = ['bar_category']
 
     if chart_type in category_types: 
-      self.create_category_bar(bars_different_colors = True, yaxis_data_type = yaxis_data_type, axis_title = axis_title, digits = digits)
+      self.create_category_bar(bars_different_colors = bars_different_colors, yaxis_data_type = yaxis_data_type, axis_title = axis_title, digits = digits, stacked = stacked, x_col = x_col, y_col = y_col, color_col = color_col)
 
     # -- build legend 
     self.create_legend(legend_layout = legend_layout, legend_title = legend_title, calc_method=calc_method, calc_days=calc_days,   secondary_column = secondary_column, 

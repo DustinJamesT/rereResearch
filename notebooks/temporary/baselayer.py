@@ -1,39 +1,3 @@
-# %%
-# -- example on using 'messycharts' chart tool
-
-# %% [markdown]
-# # -- notebook details
-
-# %%
-# -- folder requirements 
-
-"""
-- main 
-  |
-  |-- /charts/        -- folder to store chart outputs 
-  |-- /data/          -- folder to save data outputs 
-  |
-  |-- /scripts/notebook.ipynb -- script to collect data and build slides with messaychart tool 
-  |
-  |-- messycharts.py -- chart tool for building messari slides 
-
-"""
-
-# %%
-# -- packages 
-
-# -- Messari (only need for data collection)
-# -- Pillow 
-# -- Pandas 
-# -- Plotly
-
-# -- messycharts (file)
-
-
-# %% [markdown]
-# # -- import
-
-# %%
 import pandas as pd 
 
 from datetime import date
@@ -334,13 +298,92 @@ chain_df = chain_df.drop(chain_df[chain_df.date < '2021-01-01'].index)
 # %%
 chain_df.replace('Bsc', 'BSC', inplace=True)
 
-# %% [markdown]
-# # -- save data
+# ============================================================
+# -- get protocol data 
+# ============================================================
+
+dl_protocol_df = defillama.get_protocols()
+
+tvl_cutoff = 1000000
+categories = list(dl_protocol_df.loc['category'].unique())
+
+categories.remove('Chain')
+categories.remove('Bridge')
+
+# -- filter protocols 
+dl_protocol_df = dl_protocol_df.loc[:,dl_protocol_df.loc['category',:].isin(categories)]
+dl_protocol_df = dl_protocol_df.loc[:,dl_protocol_df.loc['tvl',:] > tvl_cutoff]
+
+# -- condense categories 
+remap_categories = {
+  'CDP': 'Stables', 
+  'Algo-Stables': 'Stables', 
+  'Yield Aggregator': 'Yield', 
+  'NFT Marketplace': 'NFT Services', 
+  'NFT Lending': 'NFT Services'
+}
+
+# -- function to get protocol tvl in my format 
+def getProtocolTVL(slug, valid_chains, protocol_name, category): 
+  url = 'https://api.llama.fi/protocol/' + slug 
+  resp = requests.get(url)
+  protocol_data = resp.json()['chainTvls']
+
+  df_build = []
+
+  for chain, data in protocol_data.items(): 
+    
+    chain = 'BSC' if chain == 'Binance' else chain 
+
+    if chain in valid_chains:
+      for daily in data['tvl']: 
+
+        dt_object = datetime.datetime.fromtimestamp(int(daily['date']))
+        date = dt_object.strftime('%Y-%m-%d')
+
+        df_build.append({
+          'date': date, 
+          'chain': chain,
+          'protocol': protocol_name,
+          'category': category,
+          'tvl': daily['totalLiquidityUSD']
+        })
+
+  df = pd.DataFrame(df_build)
+  return df 
+
+
+# -- build protocol tvl df 
+protocol_dfs = []
+
+valid_chains = chains[:]
+cosmos_chains = [ch.capitalize() for ch in cosmos_chains]
+valid_chains.extend(cosmos_chains)
+
+for protocol in dl_protocol_df.columns:
+  category = dl_protocol_df[protocol].category
+  category = category if category not in remap_categories.keys() else remap_categories[category]
+
+  temp_df = getProtocolTVL(dl_protocol_df[protocol].slug, valid_chains, dl_protocol_df[protocol].name, category)
+
+  protocol_dfs.append(temp_df)
+
+
+protocol_df = pd.concat(protocol_dfs, axis=0)
+
+# -- fix cosmos chains 
+protocol_df['chain'] = protocol_df.apply(lambda x: x.chain if x.chain not in cosmos_chains else 'Cosmos', axis=1)
+
+# -- trim data set to 2021 and up 
+protocol_df['date'] = pd.to_datetime(protocol_df['date'])
+protocol_df = protocol_df[protocol_df.date.dt.year > 2020]
+
 
 # %%
 # -- save output 
-chain_df.to_csv(filepath_data + 'chain_data_' + today_str +'.csv', index=False)
-stables_df.to_csv(filepath_data + 'chain_stables_' + today_str +'.csv', index=False)
+chain_df.to_csv(filepath_data + 'chain_data.csv', index=False)
+stables_df.to_csv(filepath_data + 'chain_stables.csv', index=False)
+protocol_df.to_csv(filepath_data + 'protocol_tvl.csv', index=False)
 
 # %% [markdown]
 # # -- CHART: Plot Basics 
@@ -387,30 +430,82 @@ for date_range in date_ranges:
   chart.source = 'Messari, DeFi Llama'
   chart.note = 'Cosmos ecosystem TVL is a combination of top app chains'
 
+  
+  calc_days = 14 if date_range == 30 else 30 
+
   # -- line chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/tvl/' + 'allChain-line-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'line', 
                       axis_title= 'Chain TVL',          # -- define y axis title 
                       yaxis_data_type = 'dollar',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Chain TVL (7d MA)', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
   # -- area chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/tvl/' + 'allChain-area-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'area', 
                       axis_title= 'Chain TVL',          # -- define y axis title 
                       yaxis_data_type = 'dollar',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Chain TVL (7d MA)', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
+                      digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
+
+# -- TVL Charts - Market Share 
+plot_chains = list(chain_df.chain.unique())
+plot_chains.remove('Arbitrum')
+plot_chains.remove('Optimism')
+
+plot_column = 'tvl'
+moving_avg = 7 
+
+for date_range in date_ranges: 
+  # -- filter dataframe 
+  if date_range > 900: 
+    plot_df = chain_df[chain_df['chain'].isin(plot_chains)].groupby(['date', 'chain'])[plot_column].sum().unstack().rolling(moving_avg).mean()
+    date_range = 'all'
+  else: 
+    plot_df = chain_df[chain_df['chain'].isin(plot_chains)].groupby(['date', 'chain'])[plot_column].sum().unstack().rolling(moving_avg).mean().iloc[(-1 * date_range)::]
+
+  # -- sort df with largest chains first
+  new_cols = list(plot_df.iloc[-1::].sum().sort_values(ascending = False).index)
+  plot_df = plot_df[new_cols]
+
+  # -- reset to percent 
+  plot_df = plot_df.div(plot_df.sum(axis=1), axis=0)
+
+  # -- initialize chart
+  chart = messychart(plot_df)
+    
+  # -- define titles
+  chart.title = 'TVL Market Share Changes Across Major Ecosystems'
+  chart.subtitle = '7d moving average of chain TVL share over the last ' + str(date_range) +'d'
+  chart.subtitle = '7d moving average of chain TVL share over the last year' if date_range == 365 else chart.subtitle
+  chart.subtitle = '7d moving average of chain TVL share since the start of 2021' if date_range == 'all' else chart.subtitle
+  chart.source = 'Messari, DeFi Llama'
+  chart.note = 'Cosmos ecosystem TVL is a combination of top app chains'
+
+  calc_days = 14 if date_range == 30 else 30
+
+  # -- area chart  
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/tvl/' + 'allChain-area-' + str(date_range) + '-rhv'
+  chart.create_slide(chart_type = 'area', 
+                      axis_title= 'Chain TVL',          # -- define y axis title 
+                      yaxis_data_type = 'percent',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
+                      legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
+                      legend_title='TVL Share', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
 
 
-
-
 # %%
-# -- TVL Charts 
+# -- TVL Charts with Price 
 plot_chains = list(chain_df.chain.unique())
 plot_chains.remove('Arbitrum')
 plot_chains.remove('Optimism')
@@ -452,13 +547,17 @@ for date_range in date_ranges:
   chart.source = 'Messari, DeFi Llama'
   chart.note = 'Cosmos ecosystem TVL is a combination of top app chains'
 
+  calc_days = 14 if date_range == 30 else 30 
+
   # -- area chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-withPrice-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-withPrice-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/tvl/' + 'allChain-twinPrice-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'area', 
                       axis_title= 'Chain TVL',          # -- define y axis title 
                       yaxis_data_type = 'dollar',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Chain TVL (7d MA)', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       secondary_column = 'ETH Market Cap',     # -- define which column to be the secondary axis 
                       secondary_axis_title = 'Ethereum Market Cap', # -- define the secondary axis title 
                       secondary_data_type= 'dollar',   # -- defines the data type of the secondary axis
@@ -501,25 +600,119 @@ for date_range in date_ranges:
   chart.source = 'Messari, DeFi Llama'
   chart.note = 'Cosmos ecosystem TVL is a combination of top app chains'
 
+  calc_days = 14 if date_range == 30 else 30 
+
   # -- line chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-NoETH-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-NoETH-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/tvl/' + 'NoEth-line-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'line', 
                       axis_title= 'Chain TVL',          # -- define y axis title 
                       yaxis_data_type = 'dollar',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Chain TVL (7d MA)', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
   # -- area chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-NoETH-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-NoETH-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/tvl/' + 'NoEth-area-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'area', 
                       axis_title= 'Chain TVL',          # -- define y axis title 
                       yaxis_data_type = 'dollar',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Chain TVL (7d MA)', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
+# =========================
+# -- DeFi Sectors 
+# =========================
+p_df = protocol_df[ protocol_df.date == protocol_df.iloc[-1].date].groupby(['chain', 'category'])['tvl'].sum().unstack()
 
+# -- sort df with largest chains first
+new_cols = list(p_df.iloc[::].sum().sort_values(ascending = False).index)
+p_df = p_df[new_cols]
+
+plot_df = p_df.fillna(0).div(p_df.sum(axis=1), axis=0)
+other_df = p_df.fillna(0).div(p_df.sum(axis=1), axis=0)
+
+# -- create other column 
+cols = plot_df.columns[:9]
+other_cols = plot_df.columns[9:]
+
+plot_df_ = plot_df[cols]
+
+other_df['Other'] = other_df[other_cols].sum(axis=1)
+
+plot_df = plot_df_.join(other_df['Other'])
+
+plot_df.drop(plot_df[plot_df.index == 'BSC'].index, inplace= True)
+
+del other_df
+
+# -- intialize chart object 
+chart = messychart(plot_df)
+
+# -- define titles 
+chart.title = 'DeFi Sector TVL Share Across Major Ecosystems'
+chart.subtitle = 'Comparing proportional TVL across DeFi Sectors'
+chart.source = 'Messari, DeFi Llama'
+chart.note = 'Cosmos figures are comprised of TVL across top app chains'
+#chart.date = plot_df.index[-1].strftime('%B %d, %Y')
+
+chart.filepath = filepath_chart +'/defi/' + 'chain_sector_tvls' + '-bottom'
+
+# -- print chart 
+chart.create_slide(chart_type = 'bar_category', axis_title= 'Sector TVL Share', yaxis_data_type = 'percent', legend_layout = 'bottom', bars_different_colors = False)
+
+# ==========================
+# -- Chain DeFi Sectors 
+# ==========================
+skip_chains = ['BSC']
+
+for chain_ in protocol_df.chain.unique():
+  if chain_ not in skip_chains:
+    for days in [30, 90, 999]: 
+      # -- filter df 
+      protocol_df[protocol_df.chain == chain_].groupby(['date', 'category'])['tvl'].sum().unstack()
+
+      # -- sort df with largest chains first
+      new_cols = list(p_df.iloc[::].sum().sort_values(ascending = False).index)
+      p_df = p_df[new_cols]
+
+      # -- create other col 
+      cols = plot_df.columns[:8]
+      other_cols = plot_df.columns[8:]
+
+      plot_df['Other'] = plot_df[other_cols].sum(axis=1)
+      plot_df.drop(columns = other_cols, inplace=True)
+      
+      if days <  1000:
+        plot_df = plot_df.rolling(7).mean().iloc[(-1 * days)::]
+      else:
+        plot_df = plot_df.rolling(7).mean()
+
+      # -- build chart 
+      # -- intialize chart object 
+      chart = messychart(plot_df)
+
+      # -- define titles 
+      chart.title = chain_ + ' DeFi Sector TVL Over Time'
+      chart.subtitle = '7d moving average of ' + chain_ + "'s DeFi sector TVL"
+      chart.source = 'Messari, DeFi Llama'
+      chart.note = 'Other column sum of all other sectors. Includes ' + other_cols[0] + ', ' + other_cols[1] + ',  ' + other_cols[2] + ' & more'
+      #chart.date = plot_df.index[-1].strftime('%B %d, %Y')
+
+      chart.filepath = '../defi/' + chain_ + '-defi-sectors-timeseries'
+      chart.filepath = chart.filepath + '-all' if days > 365 else chart.filepath + '-' + str(days)
+
+      # -- print chart 
+      chart.create_slide(chart_type = 'area', 
+                          axis_title= 'DeFi Sector TVL',          # -- define y axis title 
+                          yaxis_data_type = 'dollar',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
+                          legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
+                          legend_title='Sector TVL (7d MA)', # -- defines legend title - only use with the "right" or "right_values" options 
+                          digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values legend type)
 
 
 # %%
@@ -554,22 +747,28 @@ for date_range in date_ranges:
   chart.source = 'Messari, CoinGecko'
   chart.note = 'Cosmos ecosystem market cap is a combination of top app chains'
 
+  calc_days = 14 if date_range == 30 else 30 
+
   # -- line chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/mcap/' + 'allChain-line-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'line', 
                       axis_title= 'Chain Market Cap',          # -- define y axis title 
                       yaxis_data_type = 'dollar',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Chain Market Cap', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
   # -- area chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/mcap/' + 'allChain-area-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'area', 
                       axis_title= 'Market Cap',          # -- define y axis title 
                       yaxis_data_type = 'dollar',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Chain Market Cap', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
 # %%
@@ -604,13 +803,17 @@ for date_range in date_ranges:
   chart.source = 'Messari, GokuStats'
   chart.note = 'Cosmos active addresses is combination of CosmosHub and Osmosis'
 
+  calc_days = 14 if date_range == 30 else 30 
+
   # -- line chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/addrs/' + 'allChain-line-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'line', 
                       axis_title= 'Active Addresses',          # -- define y axis title 
                       yaxis_data_type = 'numeric',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Active Addresses', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
 
@@ -646,13 +849,17 @@ for date_range in date_ranges:
   chart.source = 'Messari, GokuStats'
   chart.note = 'Cosmos daily transactions is combination of CosmosHub and Osmosis'
 
+  calc_days = 14 if date_range == 30 else 30 
+
   # -- line chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/txns/' + 'allChain-line-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'line', 
                       axis_title= 'Daily Transactions',          # -- define y axis title 
                       yaxis_data_type = 'numeric',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Daily Txns', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
 # %%
@@ -687,13 +894,17 @@ for date_range in date_ranges:
   chart.source = 'Messari, GokuStats'
   chart.note = 'Only Cosmos main account followers counted. Other app chains not included.'
 
+  calc_days = 14 if date_range == 30 else 30 
+
   # -- line chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/twitter/' + 'allChain-line-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'line', 
                       axis_title= 'Twitter Followers',          # -- define y axis title 
                       yaxis_data_type = 'numeric',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Followers', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
 # %%
@@ -728,22 +939,28 @@ for date_range in date_ranges:
   chart.source = 'Messari, DeFi Llama'
   chart.note = 'Only supply of top 12 stablecoins included'
 
+  calc_days = 14 if date_range == 30 else 30 
+
   # -- line chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/stables/' + 'allChain-line-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'line', 
                       axis_title= 'Chain Market Cap',          # -- define y axis title 
                       yaxis_data_type = 'dollar',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Chain Market Cap', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
   # -- area chart  
-  chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  #chart.filepath = filepath_chart + 'chain-' + plot_column + '-' + str(date_range) + '-rhv'
+  chart.filepath = filepath_chart +'/stables/' + 'allChain-area-' + str(date_range) + '-rhv'
   chart.create_slide(chart_type = 'area', 
                       axis_title= 'Market Cap',          # -- define y axis title 
                       yaxis_data_type = 'dollar',       # -- defines the type: can be ['numeric', 'dollar', 'percent']. default is numeric 
                       legend_layout = 'right_values',   # -- defines the legend style and placement. options are ['bottom', 'right', 'right_values', 'None']
                       legend_title='Chain Market Cap', # -- defines legend title - only use with the "right" or "right_values" options 
+                      calc_days = calc_days,
                       digits=1)                         # -- defines the number of digits in the y axis and the legend (if right_values)
 
 
