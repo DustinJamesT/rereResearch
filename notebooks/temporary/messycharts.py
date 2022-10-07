@@ -55,6 +55,7 @@ class messychart:
 
     today = date.today()
     self.filepath = 'new_chart' + today.strftime("%Y_%m_%d")
+    self.raw_folder = False
 
     # -- slide text 
     self.name = ''
@@ -92,23 +93,17 @@ class messychart:
       'numeric': None
     }
 
+    # -- color sets 
+    self.color_sets = {
+      'standard': ['#5B8EDC', '#8ED7E1', '#B5D987', '#F09837', '#ED6E69', '#9BBBEA', '#B9E6ED', '#D2E8B5', '#F5C174', '#F2A6A4'],
+      'bright':   ['#231DC5', '#1B80F3', '#00D1FF', '#7000FF', '#A030E5', '#CE66FF', '#16B65F', '#00E778', '#59FFCD', '#FFC700', '#FFDD64', '#FFF384', '#F3B09B'], 
+      'website':  ['#537FC6', '#C67F53', '#C653B4', '#B4C653', '#53C67F', '#5353C6', '#53B4C6', '#7F53C6', '#C6B453', '#C65353', '#537F7F', '#7A7A7A'], 
+      'sunrise':  ['#377CCB', '#2BB5D3', '#947BC7', '#C875C2', '#E18399', '#E8C2AD', '#EBAB70', '#ED9767', '#E1B61D'], 
+    }
+
+
     # -- slide config 
-    self.colors = [
-        "#231DC5",
-        "#1B80F3",
-        "#00D1FF",
-        "#7000FF",
-        "#A030E5",
-        "#CE66FF",
-        "#16B65F",
-        "#00E778",
-        "#59FFCD",
-        "#FFC700",
-        "#FFDD64",
-        "#FFF384",
-        "#F5E391",
-        "#F3B09B",
-    ]
+    self.colors = self.color_sets['standard']
 
     self.secondary_color = '#FFC700'
 
@@ -523,8 +518,15 @@ class messychart:
   # 2.07 - save output (creates chart)
   def save_output(self): 
     # -- write temporary raw file & load 
-    self.fig.write_image(f'{self.filepath}-raw.png')
-    foreground = Image.open(f'{self.filepath}-raw.png')
+    if self.raw_folder: 
+      i = self.filepath.rfind('/')
+      raw_path = self.filepath[:i] + '/raw' + self.filepath[i:]
+      self.fig.write_image(f'{raw_path}-raw.png')
+      foreground = Image.open(f'{raw_path}-raw.png')
+
+    else:
+      self.fig.write_image(f'{self.filepath}-raw.png')
+      foreground = Image.open(f'{self.filepath}-raw.png')
     
     # -- default date to today
     today = date.today()
