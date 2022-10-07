@@ -20,8 +20,8 @@
 # IMPORTS (1.00)
 # -- images 
 from io import BytesIO
-from turtle import tiltangle, title
-from unicodedata import decimal, digit
+#from turtle import tiltangle, title
+#from unicodedata import decimal, digit
 from PIL import (
     Image,
     ImageFont,
@@ -33,7 +33,7 @@ import numpy as np
 import math
 
 from datetime import date
-from pyparsing import col
+#from pyparsing import col
 
 import requests
 
