@@ -7,3 +7,9 @@ the intention is to build out a library of custom tools to scale research effort
 # Warnings 
 
 This will be a disorganized mess 
+
+# main Env 
+source ~/.virtualenvs/messari/bin/activate
+
+mac-mini
+source ~/.virtualenvs/messari-sgk/bin/activate
